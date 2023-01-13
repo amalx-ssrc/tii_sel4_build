@@ -42,7 +42,7 @@ EXTRA_CONTAINER_RUN_ARGS := $(DOCKER_IS_NOT_PODMAN_RUN_ARGS) $(DOCKER_IS_PODMAN_
 
 
 
-#all: vm_minimal vm_multi $(CONFIG_FILE)
+all: x86_defconfig sel4dynamic $(CONFIG_FILE)
 
 arm_defconfig:
 	@echo 'PLATFORM=qemu-arm-virt' > $(CONFIG_FILE)
@@ -109,6 +109,7 @@ clean_builds:
 	@for plat in $(PLATFORMS); do \
 		find -maxdepth 1 -type d -name "build_$${plat}_*" -exec rm -rfv {} + ; \
 	done
+	rm -f $(WORKSPACE_ROOT)/build
 
 .PHONY: clean_images
 clean_images:

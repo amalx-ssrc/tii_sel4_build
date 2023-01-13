@@ -67,25 +67,28 @@ BUILD_DIR_SUFFIX="${SOURCE_DIR##*/}"
 . "${WORKSPACE_ROOT}/.config"
 
 BUILD_DIR="${WORKSPACE_ROOT}/build_${PLATFORM}_${BUILD_DIR_SUFFIX}"
+BUILD_DIR_LINK="${WORKSPACE_ROOT}/build"
 
 if [[ -e "${BUILD_DIR}" ]] \
 && [[ -d "${BUILD_DIR}" ]]; then
   rm -rf "${BUILD_DIR}"
+  rm -f "${BUILD_DIR_LINK}"
 fi
 
 mkdir -p "${BUILD_DIR}"
+ln -s "${BUILD_DIR}" "${BUILD_DIR_LINK}"
 
 ln -rs "${WORKSPACE_ROOT}/tools/seL4/cmake-tool/init-build.sh" "${BUILD_DIR}"
 ln -rs "${SOURCE_DIR}/easy-settings.cmake" "${BUILD_DIR}"
 
-pushd .
 cd "${BUILD_DIR}" || die "Failed to enter build directory!"
 
 # shellcheck disable=SC2068
 #./init-build.sh -B . -DAARCH64=1 -DPLATFORM="${PLATFORM}" -DCROSS_COMPILER_PREFIX="${CROSS_COMPILE}" $@
 ./init-build.sh -B . -DPLATFORM="${PLATFORM}" -DRELEASE=FALSE -DSIMULATION=TRUE
 ninja
-popd
 
 echo "Here are your binaries in ${BUILD_DIR}: "
 ls -lA "${BUILD_DIR}"/
+
+echo "Link to build directory: ${BUILD_DIR_LINK}"

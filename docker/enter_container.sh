@@ -2,34 +2,39 @@
 
 #set -x
 
+# Find utility functions
 SCRIPT_DIR="$(dirname $(realpath $0))/../../scripts"
 . "${SCRIPT_DIR}"/utils.sh
 
+
+# Variables
+WORKSPACE_ROOT=
+CENGINE=
+CIMAGE=
+
 [[ "$#" -lt 3 ]] && die "Too few arguments!"
 
+# Parse and check needed args
 WORKSPACE_ROOT="$1"
-[[ -e "${WORKSPACE_ROOT}" ]] || die "Workspace root \"${WORKSPACE_ROOT}\" doesn't exist!"
-
 CENGINE="$2"
-[[ -z "${CENGINE}" ]] && die "Unknown container engine!"
-
 CIMAGE="$3"
+shift 3
+[[ -e "${WORKSPACE_ROOT}" ]] || die "Workspace root \"${WORKSPACE_ROOT}\" doesn't exist!"
+[[ -z "${CENGINE}" ]] && die "Unknown container engine!"
 [[ -z "${CIMAGE}" ]] && die "Unknown container image!"
 
-shift 3
-
+# Check if are given a program to run
 CEXEC="$*"
-if [[ -z "${CEXEC}" ]]; then
-  CEXEC="/bin/bash"
-fi
+[[ -z "${CEXEC}" ]] && CEXEC="/bin/bash"
 
+
+# Container args
 CARGS=
 
 # Support for non-terminal runs
-if [[ -t 0 ]]; then
-  CARGS+="-it"
-fi
+[[ -t 0 ]] && CARGS+="-it"
 
+# Basic args
 CARGS+=" --rm"
 CARGS+=" --hostname tiiuae-build"
 CARGS+=" -v ${HOME}/.gitconfig:/home/$(id -un)/.gitconfig"
@@ -60,6 +65,7 @@ if [[ -e "${SSH_AUTH_SOCK}" ]]; then
   fi
 fi
 
+# Run or die
 ${CENGINE} run \
   ${CARGS} \
   -e CENGINE=${CENGINE} \
