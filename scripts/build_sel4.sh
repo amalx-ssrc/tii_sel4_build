@@ -76,7 +76,7 @@ if [[ -e "${BUILD_DIR}" ]] \
 fi
 
 mkdir -p "${BUILD_DIR}"
-ln -s "${BUILD_DIR}" "${BUILD_DIR_LINK}"
+ln -rs "${BUILD_DIR}" "${BUILD_DIR_LINK}"
 
 ln -rs "${WORKSPACE_ROOT}/tools/seL4/cmake-tool/init-build.sh" "${BUILD_DIR}"
 ln -rs "${SOURCE_DIR}/easy-settings.cmake" "${BUILD_DIR}"
