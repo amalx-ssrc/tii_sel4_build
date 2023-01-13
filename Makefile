@@ -1,35 +1,119 @@
-all: vm_minimal vm_multi .config
 
-rpi4_defconfig:
-	@echo 'PLATFORM=rpi4' > .config
-	@echo 'NUM_NODES=4' >> .config
-	@echo 'CROSS_COMPILE=aarch64-linux-gnu-' >> .config
+WORKSPACE_ROOT ?= $(shell pwd)
+CONFIG_FILE    ?= $(WORKSPACE_ROOT)/.config
+USERNAME       ?= $(shell id -un)
+GROUPNAME      ?= $(shell id -gn)
+USERID         ?= $(shell id -u)
+GROUPID        ?= $(shell id -g)
+IMAGE          ?= tiiuae/build
+IMAGE_TAG      ?= latest
+IMAGE_TAG_DATE ?= $(shell date +%F.%H%M%S)
+PLATFORMS      ?= pc99 qemu-arm-virt qemu-riscv-virt
 
-build_camkes: .config
-	@scripts/build_camkes.sh
+# Container engine vars
+CENGINE               := $(shell docker 2>&1 | grep -q podman && echo "podman" || echo "docker")
+CENGINE_BUILD         ?= $(CENGINE) build
+CONTAINER_BUILD_FLAGS ?= --force-rm=true
+ifndef CENGINE_EXEC
+	CENGINE_EXEC      := bash
+	CENGINE_RUN_FLAGS += --rm -it
+endif
 
-build_sel4test: .config
-	@scripts/build_sel4test.sh
+CENGINE_BUILD_CTX ?= $(WORKSPACE_ROOT)/docker
 
-include $(wildcard projects/*/Makefile.tii_sel4_build)
 
-vm_minimal:
-	CAMKES_VM_APP=vm_minimal make build_camkes
+# Extra arguments to pass depending if we have Docker or Podman  - these
+# are constructed in a very verbose way to be obvious about why we want to do
+# certain things under regular 'docker' vs 'podman'.
+# Note that 'docker --version' will not say "podman" if symlinked.
+DOCKER_IS_PODMAN  := docker --help 2>&1 | grep -q podman
+IF_DOCKER_IS_PODMAN     := $(DOCKER_IS_PODMAN) && echo
+IF_DOCKER_IS_NOT_PODMAN := $(DOCKER_IS_PODMAN) || echo
 
-vm_multi:
-	CAMKES_VM_APP=vm_multi make build_camkes
+# If we're having Docker then we'll use the `-u` and `-g` options to set the user in the container.
+DOCKER_IS_NOT_PODMAN_RUN_ARGS := $(shell $(IF_DOCKER_IS_NOT_PODMAN) "-u $(USERID):$(GROUPID)")
+
+# If we're having Podman then we'll prefer to use '--userns=keep-id' to set up and
+# use the appropriate sub{u,g}id mappings rather than end up using UID 0 in the container
+DOCKER_IS_PODMAN_RUN_ARGS := $(shell $(IF_DOCKER_IS_PODMAN) "--userns=keep-id")
+
+# And we'll jam them into one variable to reduce noise in `docker run` lines
+EXTRA_CONTAINER_RUN_ARGS := $(DOCKER_IS_NOT_PODMAN_RUN_ARGS) $(DOCKER_IS_PODMAN_RUN_ARGS)
+
+
+
+#all: vm_minimal vm_multi $(CONFIG_FILE)
+
+arm_defconfig:
+	@echo 'PLATFORM=qemu-arm-virt' > $(CONFIG_FILE)
+	@echo 'NUM_NODES=4' >> $(CONFIG_FILE)
+	@echo 'CROSS_COMPILE=aarch64-linux-gnu-' >> $(CONFIG_FILE)
+
+riscv_defconfig:
+	@echo 'PLATFORM=qemu-riscv-virt' > $(CONFIG_FILE)
+	@echo 'NUM_NODES=4' >> $(CONFIG_FILE)
+	@echo 'CROSS_COMPILE=riscv64-unknown-linux-gnu-' >> $(CONFIG_FILE)
+
+x86_defconfig:
+	@echo 'PLATFORM=pc99' > $(CONFIG_FILE)
+	@echo 'NUM_NODES=4' >> $(CONFIG_FILE)
+
+#build_camkes: $(CONFIG_FILE)
+#	@scripts/build_camkes.sh
+
+build_sel4test: $(CONFIG_FILE)
+	@scripts/build_sel4.sh \
+	$(WORKSPACE_ROOT) \
+	$(CENGINE) \
+	$(IMAGE):$(IMAGE_TAG) \
+	projects/build_sel4test
+
+build_sel4dynamic: $(CONFIG_FILE)
+	@scripts/build_sel4.sh \
+	$(WORKSPACE_ROOT) \
+	$(CENGINE) \
+	$(IMAGE):$(IMAGE_TAG) \
+	projects/sel4_dynamic_loader
 
 sel4test:
 	make build_sel4test
 
-.PHONY: docker
+sel4dynamic:
+	make build_sel4dynamic
 
-docker:
-	docker build docker -t tiiuae/build:latest
+.PHONY: container
+container: 
+	$(CENGINE_BUILD) \
+	$(CONTAINER_BUILD_FLAGS) \
+	--build-arg USERNAME=$(USERNAME) \
+	--build-arg GROUPNAME=$(GROUPNAME) \
+	--build-arg UID=$(USERID) \
+	--build-arg GID=$(GROUPID) \
+	-t $(IMAGE):$(IMAGE_TAG) \
+	$(CENGINE_BUILD_CTX)
 
-linux-image:
-	@scripts/build_yocto.sh
-
+.PHONY: shell
 shell:
-	@docker/enter_container.sh
+	@docker/enter_container.sh \
+	$(WORKSPACE_ROOT) \
+	$(CENGINE) \
+	$(IMAGE):$(IMAGE_TAG) \
+	$(CENGINE_EXEC)
+
+.PHONY: testdirs
+testdirs:
+	@for plat in $(PLATFORMS); do mkdir -pv "build_$${plat}_test" ; done
+
+.PHONY: clean_builds
+clean_builds:
+	@for plat in $(PLATFORMS); do \
+		find -maxdepth 1 -type d -name "build_$${plat}_*" -exec rm -rfv {} + ; \
+	done
+
+.PHONY: clean_images
+clean_images:
+	@$(CENGINE) rmi $(IMAGE) 2> /dev/null || true
+
+.PHONY: clean
+clean: clean_builds
 
